@@ -16,6 +16,7 @@ import time
 import tkinter as tk
 from tkinter import ttk, scrolledtext
 
+import pygame
 import mediapipe as mp
 from mediapipe.tasks import python as _mp_python
 from mediapipe.tasks.python import vision as _mp_vision
@@ -141,6 +142,17 @@ def annotate(img: Image.Image):
         draw.ellipse((cx - r,  cy - r,  cx + r,  cy + r),  fill=C_IRIS)
 
     gaze, h_ratio, v_ratio = _gaze_ratios(lm)
+
+    def dist(p1, p2): return ((p1.x - p2.x)**2 + (p1.y - p2.y)**2)**0.5
+    
+    # Use your existing landmark constants to measure eyelid distance
+    ear_l = dist(lm[_L_TOP], lm[_L_BOT]) / max(dist(lm[_L_OUTER], lm[_L_INNER]), 1e-6)
+    ear_r = dist(lm[_R_TOP], lm[_R_BOT]) / max(dist(lm[_R_OUTER], lm[_R_INNER]), 1e-6)
+    
+    # Average the two eyes. If EAR < 0.15, the eyes are considered closed.
+    avg_ear = (ear_l + ear_r) / 2.0
+    eyes_state = "CLOSED" if avg_ear < 0.15 else "OPEN"
+    
     return out, {'detected': True, 'gaze': gaze,
                  'h_ratio': h_ratio, 'v_ratio': v_ratio,
                  'num_landmarks': len(lm)}
@@ -263,6 +275,94 @@ class WebcamCapture(threading.Thread):
             else:
                 time.sleep(0.05)
 
+# ---------------------------------------------------------------------------
+# Warning
+# ---------------------------------------------------------------------------
+
+class DriverAlertManager:
+    def __init__(self, root_window):
+        self.root = root_window
+        
+        # Initialize Audio Mixer (Non-blocking)
+        pygame.mixer.init()
+        self.snd_distract = pygame.mixer.Sound('beep_short.mp3')
+        self.snd_fatigue = pygame.mixer.Sound('alarm_loud.mp3')
+        
+        # Time tracking
+        self.eyes_closed_since = None
+        self.distracted_since = None
+        
+        # Thresholds (in seconds)
+        self.DROWSY_THRESHOLD = 1.5 
+        self.DISTRACT_THRESHOLD = 2.0
+        
+        # Current State
+        self.alert_level = 0 # 0=Normal, 1=Distracted, 2=Fatigued
+        
+        # UI Overlay
+        self.alert_label = tk.Label(self.root, text="SYSTEM ACTIVE", 
+                                    font=("Impact", 40), fg="#00FF41", bg="#0B0E14")
+        self.alert_label.pack(fill=tk.X, pady=20)
+        
+    def update_state(self, eyes_state, gaze_direction):
+        """
+        eyes_state: "OPEN" or "CLOSED"
+        gaze_direction: "LEFT", "RIGHT", "CENTER", or " UP"/" DOWN"
+        """
+        now = time.time()
+        
+        # --- 1. Process Ewyes (Fatigue overrides everything) ---
+        if eyes_state == "CLOSED":
+            if self.eyes_closed_since is None:
+                self.eyes_closed_since = now
+        else:
+            self.eyes_closed_since = None # Reset on open
+            
+        # --- 2. Process Gaze (Distraction) ---
+        if "CENTER" not in gaze_direction: # If looking Left/Right/Up/Down
+            if self.distracted_since is None:
+                self.distracted_since = now
+        else:
+            self.distracted_since = None # Reset on centered
+            
+        # --- 3. Evaluate Conditions ---
+        self._evaluate_alerts(now)
+
+    def _evaluate_alerts(self, now):
+        # Check Critical Fatigue First
+        if self.eyes_closed_since and (now - self.eyes_closed_since) >= self.DROWSY_THRESHOLD:
+            self.trigger_fatigue_alert()
+            
+        # Check Distraction Second
+        elif self.distracted_since and (now - self.distracted_since) >= self.DISTRACT_THRESHOLD:
+            self.trigger_distract_alert()
+            
+        # Reset to Normal
+        else:
+            self.reset_alerts()
+
+    def trigger_fatigue_alert(self):
+        if self.alert_level != 2:
+            self.alert_level = 2
+            self.alert_label.config(text="!!! WAKE UP !!!", fg="white", bg="#FF0000")
+            self.root.config(bg="#FF0000")
+            # pygame.mixer.Sound.play(self.snd_fatigue, loops=-1) # Loop alarm
+            print("CRITICAL: AUDIO ALARM TRIGGERED")
+
+    def trigger_distract_alert(self):
+        if self.alert_level != 1:
+            self.alert_level = 1
+            self.alert_label.config(text="EYES ON ROAD", fg="black", bg="#FFD700")
+            self.root.config(bg="#FFD700")
+            # pygame.mixer.Sound.play(self.snd_distract)
+            print("WARNING: DISTRACTION BEEP TRIGGERED")
+
+    def reset_alerts(self):
+        if self.alert_level != 0:
+            self.alert_level = 0
+            self.alert_label.config(text="FOCUSED", fg="#00FF41", bg="#0B0E14")
+            self.root.config(bg="#0B0E14")
+            pygame.mixer.stop() # Stop any playing audio
 
 # ---------------------------------------------------------------------------
 # GUI
@@ -294,6 +394,8 @@ class App:
 
         if init_port:
             self._connect(init_port, init_baud)
+
+        self.alert_manager = DriverAlertManager(self.root)
 
     # ── UI ─────────────────────────────────────────────────────────────────
 
@@ -494,10 +596,12 @@ class App:
                 self._mp_stat_var.set(f'MediaPipe: OK ({n} pts)\nh={h:.2f} v={v:.2f}')
                 self._log(f'MediaPipe: face detected | {n} landmarks | '
                           f'gaze={gaze} | h={h:.3f} v={v:.3f}')
+                self.alert_manager.update_state(info['eyes_state'], info['gaze'])
             else:
                 self._gaze_var.set('Gaze: no face')
                 self._mp_stat_var.set('MediaPipe: no face detected')
                 self._log('MediaPipe: no face detected')
+                self.alert_manager.reset_alerts()
         else:
             img = img.convert('RGB')
             self._gaze_var.set('Gaze: (overlay off)')
