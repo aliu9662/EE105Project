@@ -5,6 +5,7 @@ from tkinter import font
 from collections import deque
 import numpy as np
 from scipy.fft import fft, fftfreq
+import pygame
 
 # --- 1. Configuration & Constants ---
 PORT = input("Enter the serial port (e.g., COM5 or /dev/ttyUSB0): ").strip()
@@ -106,7 +107,79 @@ def process_oximeter_readings(red_data, ir_data, sample_rate):
     return spo2, heart_rate
 
 
-# --- 3. UI Setup ---
+# --- 3. warning system ---
+class TelemetryAlertManager:
+    def __init__(self, root, alert_label):
+        self.root = root
+        self.alert_label = alert_label
+        
+        # Initialize Audio
+        pygame.mixer.init()
+        self.snd_warn = pygame.mixer.Sound('beep_short.mp3')
+        self.snd_crit = pygame.mixer.Sound('alarm_loud.mp3')
+        
+        self.current_level = 0  # 0: Stable, 1: Warning, 2: Critical
+        self.flash_state = False
+        
+        # Start the internal flashing loop
+        self._flash_loop()
+
+    def evaluate_telemetry(self, pressure, prox_danger, spo2, hr):
+        # 1. Check Critical Life-Safety Thresholds
+        is_hypoxic = (0 < spo2 < 90.0) # Ignore 0 (which means ERR/No data)
+        is_hr_abnormal = (0 < hr < 40) or (hr > 150)
+        is_pressure_critical = pressure < THRESHOLD_PRESSURE
+        
+        if is_hypoxic or is_hr_abnormal or is_pressure_critical:
+            self._set_level(2, self._get_critical_text(is_hypoxic, is_hr_abnormal, is_pressure_critical))
+        # 2. Check Environmental Warnings
+        elif prox_danger:
+            self._set_level(1, "WARNING: PROXIMITY HAZARD")
+        # 3. All Clear
+        else:
+            self._set_level(0, "SYSTEM STABLE")
+
+    def _get_critical_text(self, hyp, hr_ab, press):
+        errors = []
+        if press: errors.append("LOW PRESSURE")
+        if hyp: errors.append("HYPOXIA")
+        if hr_ab: errors.append("HR ABNORMAL")
+        return "CRITICAL: " + " | ".join(errors)
+
+    def _set_level(self, level, text):
+        if self.current_level != level:
+            self.current_level = level
+            pygame.mixer.stop() # Stop previous sounds
+            
+            if level == 0:
+                self.alert_label.config(text=text, fg="#00FF41", bg=BG_NORMAL)
+                self._apply_bg(BG_NORMAL)
+            elif level == 1:
+                self.alert_label.config(text=text, fg="black", bg="#FFD700")
+                self._apply_bg("#443300")
+                # pygame.mixer.Sound.play(self.snd_warn, loops=-1)
+            elif level == 2:
+                self.alert_label.config(text=text, fg="white", bg="#FF0000")
+                # pygame.mixer.Sound.play(self.snd_crit, loops=-1)
+
+    def _apply_bg(self, color):
+        self.root.configure(bg=color)
+        for widget in self.root.winfo_children():
+            # Don't overwrite the alert label's specific background
+            if widget != self.alert_label:
+                widget.configure(bg=color)
+
+    def _flash_loop(self):
+        """Handles the pulsing visual effect for critical alerts"""
+        if self.current_level == 2:
+            self.flash_state = not self.flash_state
+            current_bg = "#660000" if self.flash_state else "#220000"
+            self._apply_bg(current_bg)
+            
+        self.root.after(400, self._flash_loop)
+
+
+# --- 4. UI Setup ---
 root = tk.Tk()
 root.title("ADVANCED SENSOR TELEMETRY")
 root.geometry("500x800")  # Expanded size to fit new labels
@@ -134,6 +207,7 @@ def create_label(text, color, py=10):
 
 lbl_alert = tk.Label(root, text="SYSTEM STABLE", font=alert_font, fg="#00FF41", bg=BG_NORMAL)
 lbl_alert.pack(pady=20)
+alert_manager = TelemetryAlertManager(root, lbl_alert)
 
 val_pressure = create_label("ATMOSPHERIC PRESSURE (kPa)", TEXT_CYAN)
 val_proximity = create_label("PROXIMITY VECTOR", "#CC00FF")
@@ -141,24 +215,6 @@ val_red = create_label("PPG RED CHANNEL", "#FF3333")
 val_ir = create_label("PPG IR CHANNEL", "#33CCFF")
 val_spo2 = create_label("BLOOD OXYGEN (SpO2 %)", TEXT_YELLOW)
 val_hr = create_label("HEART RATE (BPM)", TEXT_PINK)
-
-def toggle_flash():
-    """Handles the pulsing red effect and flashing text"""
-    global flash_state
-    if is_alerting:
-        flash_state = not flash_state
-        current_bg = BG_WARNING if flash_state else "#880000"
-        root.configure(bg=current_bg)
-        lbl_alert.config(text="!!! WARNING: CRITICAL !!!", fg="white", bg=current_bg)
-        for widget in root.winfo_children():
-            widget.configure(bg=current_bg)
-    else:
-        root.configure(bg=BG_NORMAL)
-        lbl_alert.config(text="SYSTEM STABLE", fg="#00FF41", bg=BG_NORMAL)
-        for widget in root.winfo_children():
-            widget.configure(bg=BG_NORMAL)
-            
-    root.after(400, toggle_flash)
 
 def update_data():
     global is_alerting
@@ -212,7 +268,8 @@ def update_data():
                         # Only display if logic output sensible values
                         spo2_display = f"{spo2:.1f}" if spo2 > 0 else "--"
                         hr_display = f"{hr:.1f}" if hr > 0 else "--"
-                        
+
+                        alert_manager.evaluate_telemetry(p_val, prox_danger, spo2, hr)
                         val_spo2.config(text=spo2_display)
                         val_hr.config(text=hr_display)
                 
@@ -231,5 +288,4 @@ def on_closing():
 
 root.protocol("WM_DELETE_WINDOW", on_closing)
 root.after(100, update_data)
-root.after(100, toggle_flash)
 root.mainloop()

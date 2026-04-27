@@ -10,6 +10,7 @@ Usage:
 """
 
 import time
+import pygame
 import urllib.request
 from pathlib import Path
 
@@ -54,10 +55,18 @@ IRIS_CLR = (  0, 200, 255)   # amber
 TEXT_CLR = (  0, 255,   0)   # green
 
 
-def gaze_direction(lm):
+def gaze_direction_and_ear(lm):
     def x(i): return lm[i].x
     def y(i): return lm[i].y
+    def dist(p1, p2): return ((x(p1) - x(p2))**2 + (y(p1) - y(p2))**2)**0.5
 
+    # EAR Calculation
+    ear_l = dist(L_TOP, L_BOT) / max(dist(L_OUTER, L_INNER), 1e-6)
+    ear_r = dist(R_TOP, R_BOT) / max(dist(R_OUTER, R_INNER), 1e-6)
+    avg_ear = (ear_l + ear_r) / 2.0
+    eyes_state = "CLOSED" if avg_ear < 0.15 else "OPEN"
+
+    # Gaze Calculation
     h_l = (x(L_CTR) - x(L_OUTER)) / max(x(L_INNER) - x(L_OUTER), 1e-6)
     h_r = (x(R_CTR) - x(R_INNER)) / max(x(R_OUTER) - x(R_INNER), 1e-6)
     h   = (h_l + h_r) / 2.0
@@ -68,7 +77,8 @@ def gaze_direction(lm):
 
     h_label = 'LEFT'   if h < 0.38 else 'RIGHT' if h > 0.62 else 'CENTER'
     v_label = ' UP'    if v < 0.35 else ' DOWN'  if v > 0.65 else ''
-    return h_label + v_label, round(h, 3), round(v, 3)
+
+    return h_label + v_label, round(h, 3), round(v, 3), eyes_state
 
 
 def px(lm_pt, w, h):
@@ -104,6 +114,8 @@ def main():
     fps_time = time.monotonic()
     fps      = 0.0
 
+    alert_manager = CVAlertManager()
+
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -118,15 +130,19 @@ def main():
             gaze, h_ratio, v_ratio = gaze_direction(lm)
             draw_overlay(frame, lm)
 
+            alert_manager.update_state(eyes_state, gaze)
             cv2.putText(frame, f'Gaze: {gaze}',
                         (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.9, TEXT_CLR, 2)
             cv2.putText(frame, f'h={h_ratio:.2f}  v={v_ratio:.2f}',
                         (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, TEXT_CLR, 1)
             print(f'\rGaze: {gaze:<16} h={h_ratio:.3f}  v={v_ratio:.3f}   ', end='')
         else:
+            alert_manager.update_state("OPEN", "CENTER")
             cv2.putText(frame, 'No face detected',
                         (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
             print('\rNo face detected                           ', end='')
+        
+        frame = alert_manager.draw_alert(frame)
 
         # FPS counter
         now   = time.monotonic()
