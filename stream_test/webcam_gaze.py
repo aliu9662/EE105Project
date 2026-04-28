@@ -20,6 +20,82 @@ from mediapipe.tasks import python as _mp_python
 from mediapipe.tasks.python import vision as _mp_vision
 import numpy as np
 
+# ── Alert Manager Class ─────────────────────────────────────────────────────
+class CVAlertManager:
+    def __init__(self):
+        pygame.mixer.init()
+        # Ensure you have these sound files, or comment the play() lines out
+        # self.snd_distract = pygame.mixer.Sound('beep_short.wav')
+        # self.snd_fatigue = pygame.mixer.Sound('alarm_loud.wav')
+        
+        self.eyes_closed_since = None
+        self.distracted_since = None
+        self.DROWSY_THRESHOLD = 1.5 
+        self.DISTRACT_THRESHOLD = 2.0
+        
+        self.alert_level = 0
+        self.flash_state = False
+        self.last_flash_time = time.monotonic()
+
+    def update_state(self, eyes_state, gaze_direction):
+        now = time.monotonic()
+        
+        # 1. Eyes Closed Logic
+        if eyes_state == "CLOSED":
+            if self.eyes_closed_since is None:
+                self.eyes_closed_since = now
+        else:
+            self.eyes_closed_since = None
+            
+        # 2. Distraction Logic
+        if gaze_direction and "CENTER" not in gaze_direction:
+            if self.distracted_since is None:
+                self.distracted_since = now
+        else:
+            self.distracted_since = None
+            
+        # 3. Evaluate Alerts
+        if self.eyes_closed_since and (now - self.eyes_closed_since) >= self.DROWSY_THRESHOLD:
+            self._trigger(2)
+        elif self.distracted_since and (now - self.distracted_since) >= self.DISTRACT_THRESHOLD:
+            self._trigger(1)
+        else:
+            self._trigger(0)
+
+    def _trigger(self, level):
+        if self.alert_level != level:
+            self.alert_level = level
+            pygame.mixer.stop()
+            # if level == 1: pygame.mixer.Sound.play(self.snd_distract)
+            # if level == 2: pygame.mixer.Sound.play(self.snd_fatigue, loops=-1)
+
+    def draw_alert(self, frame):
+        if self.alert_level == 0:
+            return frame
+            
+        now = time.monotonic()
+        if now - self.last_flash_time > 0.4:
+            self.flash_state = not self.flash_state
+            self.last_flash_time = now
+            
+        h, w = frame.shape[:2]
+        
+        if self.alert_level == 1:
+            color = (0, 255, 255) if self.flash_state else (0, 150, 150) # Yellow (BGR)
+            text = "WARNING: EYES ON ROAD"
+        elif self.alert_level == 2:
+            color = (0, 0, 255) if self.flash_state else (0, 0, 100) # Red (BGR)
+            text = "CRITICAL: WAKE UP!"
+            
+        # Draw border
+        cv2.rectangle(frame, (0, 0), (w, h), color, 15)
+        # Draw text background
+        cv2.rectangle(frame, (w//2 - 200, 20), (w//2 + 200, 80), (0,0,0), -1)
+        # Draw text
+        cv2.putText(frame, text, (w//2 - 180, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 3)
+        
+        return frame
+
 # ── Model ──────────────────────────────────────────────────────────────────
 MODEL_PATH = Path(__file__).parent / 'face_landmarker.task'
 MODEL_URL  = ('https://storage.googleapis.com/mediapipe-models/'
