@@ -7,10 +7,14 @@ Requirements:
 Usage:
     python webcam_gaze.py
     Press Q to quit.
+
+Note: Uses macOS `afplay` for alert sounds to avoid conflicts with
+      python/main.py's pygame.mixer audio device.
 """
 
 import time
-import pygame
+
+import subprocess
 import urllib.request
 from pathlib import Path
 
@@ -23,9 +27,7 @@ import numpy as np
 # ── Alert Manager Class ─────────────────────────────────────────────────────
 class CVAlertManager:
     def __init__(self):
-        pygame.mixer.init()
-        self.snd_distract = pygame.mixer.Sound('beep_short.wav')
-        self.snd_fatigue = pygame.mixer.Sound('alarm_loud.wav')
+        self._audio_process = None
         
         self.eyes_closed_since = None
         self.distracted_since = None
@@ -64,16 +66,25 @@ class CVAlertManager:
     def _trigger(self, level):
         if self.alert_level != level:
             self.alert_level = level
-            pygame.mixer.stop() # Stop any currently playing sounds
+            
+            # Stop any currently playing sound
+            if self._audio_process:
+                self._audio_process.terminate()
+                self._audio_process = None
             
             if level == 1: 
                 print("\n>>> TRIGGER: DISTRACTION AUDIO PLAYING <<<")
-                self.snd_distract.play(loops=-1)
+                self._audio_process = subprocess.Popen(
+                    ['afplay', str(Path(__file__).parent.parent / 'beep_short.wav'), '--loop']
+                )
             elif level == 2: 
                 print("\n>>> TRIGGER: FATIGUE AUDIO PLAYING <<<")
-                self.snd_fatigue.play(loops=-1)
+                self._audio_process = subprocess.Popen(
+                    ['afplay', str(Path(__file__).parent.parent / 'alarm_loud.wav'), '--loop']
+                )
             elif level == 0:
                 print("\n>>> TRIGGER: SYSTEM NORMAL, AUDIO STOPPED <<<")
+
 
     def draw_alert(self, frame):
         if self.alert_level == 0:
