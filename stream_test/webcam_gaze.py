@@ -24,9 +24,8 @@ import numpy as np
 class CVAlertManager:
     def __init__(self):
         pygame.mixer.init()
-        # Ensure you have these sound files, or comment the play() lines out
-        # self.snd_distract = pygame.mixer.Sound('beep_short.wav')
-        # self.snd_fatigue = pygame.mixer.Sound('alarm_loud.wav')
+        self.snd_distract = pygame.mixer.Sound('beep_short.wav')
+        self.snd_fatigue = pygame.mixer.Sound('alarm_loud.wav')
         
         self.eyes_closed_since = None
         self.distracted_since = None
@@ -65,9 +64,16 @@ class CVAlertManager:
     def _trigger(self, level):
         if self.alert_level != level:
             self.alert_level = level
-            pygame.mixer.stop()
-            # if level == 1: pygame.mixer.Sound.play(self.snd_distract)
-            # if level == 2: pygame.mixer.Sound.play(self.snd_fatigue, loops=-1)
+            pygame.mixer.stop() # Stop any currently playing sounds
+            
+            if level == 1: 
+                print("\n>>> TRIGGER: DISTRACTION AUDIO PLAYING <<<")
+                self.snd_distract.play(loops=-1)
+            elif level == 2: 
+                print("\n>>> TRIGGER: FATIGUE AUDIO PLAYING <<<")
+                self.snd_fatigue.play(loops=-1)
+            elif level == 0:
+                print("\n>>> TRIGGER: SYSTEM NORMAL, AUDIO STOPPED <<<")
 
     def draw_alert(self, frame):
         if self.alert_level == 0:
@@ -89,12 +95,19 @@ class CVAlertManager:
             
         # Draw border
         cv2.rectangle(frame, (0, 0), (w, h), color, 15)
-        # Draw text background
-        cv2.rectangle(frame, (w//2 - 200, 20), (w//2 + 200, 80), (0,0,0), -1)
-        # Draw text
-        cv2.putText(frame, text, (w//2 - 180, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 3)
+        
+        (text_width, text_height), baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1.0, 3)
+        
+        box_left = (w - text_width) // 2 - 20
+        box_right = (w + text_width) // 2 + 20
+        
+        cv2.rectangle(frame, (box_left, 20), (box_right, 80), (0, 0, 0), -1)
+        
+        text_x = (w - text_width) // 2
+        cv2.putText(frame, text, (text_x, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 3)
         
         return frame
+      
 
 # ── Model ──────────────────────────────────────────────────────────────────
 MODEL_PATH = Path(__file__).parent / 'face_landmarker.task'
@@ -203,7 +216,7 @@ def main():
 
         if result.face_landmarks:
             lm   = result.face_landmarks[0]
-            gaze, h_ratio, v_ratio = gaze_direction(lm)
+            gaze, h_ratio, v_ratio, eye_state = gaze_direction_and_ear(lm)
             draw_overlay(frame, lm)
 
             alert_manager.update_state(eyes_state, gaze)

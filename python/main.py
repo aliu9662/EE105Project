@@ -52,10 +52,9 @@ def calculate_ros(red_signal, ir_signal):
     if dc_red == 0 or dc_ir == 0:
         return 0
         
-    # AC Component: The amplitude of the pulsating part of the signal
-    # We use peak-to-peak (max - min) to find the full amplitude
-    ac_red = np.max(red_signal) - np.min(red_signal)
-    ac_ir = np.max(ir_signal) - np.min(ir_signal)
+    # AC Component: robust pulsatile amplitude estimate (less sensitive to drift/outliers)
+    ac_red = np.percentile(red_signal, 95) - np.percentile(red_signal, 5)
+    ac_ir = np.percentile(ir_signal, 95) - np.percentile(ir_signal, 5)
     
     if ac_ir == 0:
         return 0
@@ -83,7 +82,9 @@ def calculate_heart_rate(signal, sample_rate):
     if n < 50:  # Need enough data for meaningful FFT
         return 0
         
-    signal_fft = fft(signal)
+    signal_arr = np.array(signal, dtype=float)
+    signal_centered = signal_arr - np.mean(signal_arr)
+    signal_fft = fft(signal_centered)
     frequencies = fftfreq(n, d=1/sample_rate)
     
     positive_freqs = frequencies[:n//2]
@@ -96,7 +97,7 @@ def calculate_heart_rate(signal, sample_rate):
     
     if len(valid_freqs) == 0:
         return 0
-        
+
     dominant_freq = valid_freqs[np.argmax(valid_magnitudes)]
     return dominant_freq * 60
 
@@ -191,6 +192,8 @@ red_history = deque(maxlen=PPG_BUFFER_SIZE)
 ir_history = deque(maxlen=PPG_BUFFER_SIZE)
 is_alerting = False
 flash_state = True
+last_sample_ts = None
+sample_interval_ms_history = deque(maxlen=50)
 
 # Fonts
 header_font = font.Font(family="Courier", size=10, weight="bold")
@@ -217,17 +220,23 @@ val_spo2 = create_label("BLOOD OXYGEN (SpO2 %)", TEXT_YELLOW)
 val_hr = create_label("HEART RATE (BPM)", TEXT_PINK)
 
 def update_data():
-    global is_alerting
+    global is_alerting, last_sample_ts, sample_interval_ms_history
     try:
         latest_line = None
         while ser.in_waiting > 0:
             line = ser.readline().decode('utf-8', errors='ignore').strip()
-            if line: latest_line = line
+            if line:
+                latest_line = line
                 
         if latest_line:
             if latest_line.count(',') == 3:
                 parts = latest_line.split(',')
                 p_val, prox_val, r_val, i_val = map(float, parts)
+                now_ts = time.time()
+                delta_ms = None if last_sample_ts is None else round((now_ts - last_sample_ts) * 1000.0, 2)
+                last_sample_ts = now_ts
+                if delta_ms is not None and delta_ms > 0:
+                    sample_interval_ms_history.append(delta_ms)
                 
                 # --- Alerts Logic ---
                 pressure_low = p_val < THRESHOLD_PRESSURE
@@ -263,7 +272,18 @@ def update_data():
                     
                     # Wait until we have a substantial amount of data points before computing FFT
                     if len(red_history) >= 50: 
-                        spo2, hr = process_oximeter_readings(list(red_history), list(ir_history), SAMPLE_RATE)
+                        effective_sample_rate = SAMPLE_RATE
+                        if len(sample_interval_ms_history) >= 10:
+                            median_interval_ms = float(np.median(sample_interval_ms_history))
+                            if median_interval_ms > 0:
+                                effective_sample_rate = 1000.0 / median_interval_ms
+
+                        ros = calculate_ros(list(red_history), list(ir_history))
+                        spo2, hr = process_oximeter_readings(
+                            list(red_history),
+                            list(ir_history),
+                            effective_sample_rate,
+                        )
                         
                         # Only display if logic output sensible values
                         spo2_display = f"{spo2:.1f}" if spo2 > 0 else "--"
