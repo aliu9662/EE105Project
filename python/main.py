@@ -135,8 +135,8 @@ class TelemetryAlertManager:
         
         # Initialize Audio
         pygame.mixer.init()
-        self.snd_warn = pygame.mixer.Sound('../beep_short.wav')
-        self.snd_crit = pygame.mixer.Sound('../alarm_loud.wav')
+        self.snd_warn = pygame.mixer.Sound('beep_short.wav')
+        self.snd_crit = pygame.mixer.Sound('alarm_loud.wav')
         
         self.current_level = 0  # 0: Stable, 1: Warning, 2: Critical
         self.flash_state = False

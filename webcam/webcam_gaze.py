@@ -69,19 +69,35 @@ class CVAlertManager:
             
             # Stop any currently playing sound
             if self._audio_process:
-                self._audio_process.terminate()
+                try:
+                    self._audio_process.terminate()
+                    self._audio_process.wait(timeout=1)
+                except:
+                    pass
                 self._audio_process = None
             
             if level == 1: 
                 print("\n>>> TRIGGER: DISTRACTION AUDIO PLAYING <<<")
-                self._audio_process = subprocess.Popen(
-                    ['afplay', str(Path(__file__).parent.parent / 'beep_short.wav'), '--loop']
-                )
+                try:
+                    audio_file = str(Path(__file__).parent.parent / 'beep_short.wav')
+                    self._audio_process = subprocess.Popen(
+                        ['afplay', audio_file],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE
+                    )
+                except Exception as e:
+                    print(f"Error playing distraction audio: {e}")
             elif level == 2: 
                 print("\n>>> TRIGGER: FATIGUE AUDIO PLAYING <<<")
-                self._audio_process = subprocess.Popen(
-                    ['afplay', str(Path(__file__).parent.parent / 'alarm_loud.wav'), '--loop']
-                )
+                try:
+                    audio_file = str(Path(__file__).parent.parent / 'alarm_loud.wav')
+                    self._audio_process = subprocess.Popen(
+                        ['afplay', audio_file],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE
+                    )
+                except Exception as e:
+                    print(f"Error playing fatigue audio: {e}")
             elif level == 0:
                 print("\n>>> TRIGGER: SYSTEM NORMAL, AUDIO STOPPED <<<")
 
