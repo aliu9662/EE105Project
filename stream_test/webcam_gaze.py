@@ -64,9 +64,16 @@ class CVAlertManager:
     def _trigger(self, level):
         if self.alert_level != level:
             self.alert_level = level
-            pygame.mixer.stop()
-            # if level == 1: pygame.mixer.Sound.play(self.snd_distract)
-            # if level == 2: pygame.mixer.Sound.play(self.snd_fatigue, loops=-1)
+            pygame.mixer.stop() # Stop any currently playing sounds
+            
+            if level == 1: 
+                print("\n>>> TRIGGER: DISTRACTION AUDIO PLAYING <<<")
+                self.snd_distract.play(loops=-1)
+            elif level == 2: 
+                print("\n>>> TRIGGER: FATIGUE AUDIO PLAYING <<<")
+                self.snd_fatigue.play(loops=-1)
+            elif level == 0:
+                print("\n>>> TRIGGER: SYSTEM NORMAL, AUDIO STOPPED <<<")
 
     def draw_alert(self, frame):
         if self.alert_level == 0:
