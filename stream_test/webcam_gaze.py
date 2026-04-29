@@ -24,8 +24,8 @@ import numpy as np
 class CVAlertManager:
     def __init__(self):
         pygame.mixer.init()
-        self.snd_distract = pygame.mixer.Sound('beep_short.wav')
-        self.snd_fatigue = pygame.mixer.Sound('alarm_loud.wav')
+        self.snd_distract = pygame.mixer.Sound('beep_short.mp3')
+        self.snd_fatigue = pygame.mixer.Sound('alarm_loud.mp3')
         
         self.eyes_closed_since = None
         self.distracted_since = None
@@ -209,7 +209,7 @@ def main():
 
         if result.face_landmarks:
             lm   = result.face_landmarks[0]
-            gaze, h_ratio, v_ratio = gaze_direction(lm)
+            gaze, h_ratio, v_ratio, eye_state = gaze_direction_and_ear(lm)
             draw_overlay(frame, lm)
 
             alert_manager.update_state(eyes_state, gaze)
