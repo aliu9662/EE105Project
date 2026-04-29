@@ -29,7 +29,7 @@ class CVAlertManager:
         
         self.eyes_closed_since = None
         self.distracted_since = None
-        self.DROWSY_THRESHOLD = 1.5 
+        self.DROWSY_THRESHOLD = 1.2
         self.DISTRACT_THRESHOLD = 2.0
         
         self.alert_level = 0
@@ -153,7 +153,7 @@ def gaze_direction_and_ear(lm):
     ear_l = dist(L_TOP, L_BOT) / max(dist(L_OUTER, L_INNER), 1e-6)
     ear_r = dist(R_TOP, R_BOT) / max(dist(R_OUTER, R_INNER), 1e-6)
     avg_ear = (ear_l + ear_r) / 2.0
-    eyes_state = "CLOSED" if avg_ear < 0.15 else "OPEN"
+    eyes_state = "CLOSED" if avg_ear < 0.18 else "OPEN"
 
     # Gaze Calculation
     h_l = (x(L_CTR) - x(L_OUTER)) / max(x(L_INNER) - x(L_OUTER), 1e-6)
