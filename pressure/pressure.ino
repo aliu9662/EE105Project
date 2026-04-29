@@ -53,19 +53,30 @@ void loop() {
     proximity = APDS.readProximity();
   }
 
-  // 3. Read Oximeter values
-  uint32_t ir_val = ppg.getIR();
-  uint32_t red_val = ppg.getRed();
+  // 3. Read Oximeter values (non-blocking FIFO mode)
+  //    Instead of calling blocking getIR()/getRed(), we use check()
+  //    which pulls all available FIFO data into local buffers at once.
+  ppg.check(); // Non-blocking: reads all available samples from sensor FIFO
 
-  // Print all values in a single comma-separated line for Python
-  // Format: Pressure, Proximity, Red, IR
-  Serial.print(pressure);
-  Serial.print(",");
-  Serial.print(proximity);
-  Serial.print(",");
-  Serial.print(red_val);
-  Serial.print(",");
-  Serial.println(ir_val);
+  // 4. Output all buffered samples
+  //    This ensures no sample is discarded — every PPG reading is sent to the PC.
+  while (ppg.available()) {
+    uint32_t red_val = ppg.getFIFORed();
+    uint32_t ir_val  = ppg.getFIFOIR();
 
-  delay(100); // Faster delay (100ms) for smoother UI plotting instead of 1000ms
+    // Print all values in a single comma-separated line for Python
+    // Format: Pressure, Proximity, Red, IR
+    Serial.print(pressure);
+    Serial.print(",");
+    Serial.print(proximity);
+    Serial.print(",");
+    Serial.print(red_val);
+    Serial.print(",");
+    Serial.println(ir_val);
+
+    ppg.nextSample(); // Advance FIFO read pointer
+  }
+
+  // No delay needed — the PPG sensor's internal sampling rate dictates timing.
+  // The loop runs as fast as possible, and the Python side receives every sample.
 }

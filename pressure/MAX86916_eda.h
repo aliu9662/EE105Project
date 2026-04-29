@@ -145,7 +145,7 @@ class MAX86916_eda {
 
   void bitMask(uint8_t reg, uint8_t mask, uint8_t thing);
  
-   #define STORAGE_SIZE 4 //Each long is 4 bytes so limit this to fit on your micro
+   #define STORAGE_SIZE 32 //Increased from 4 to handle burst FIFO reads without overflow
   typedef struct Record
   {
     uint32_t red[STORAGE_SIZE];
