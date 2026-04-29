@@ -158,10 +158,10 @@ class TelemetryAlertManager:
             elif level == 1:
                 self.alert_label.config(text=text, fg="black", bg="#FFD700")
                 self._apply_bg("#443300")
-                # pygame.mixer.Sound.play(self.snd_warn, loops=-1)
+                pygame.mixer.Sound.play(self.snd_warn, loops=-1)
             elif level == 2:
                 self.alert_label.config(text=text, fg="white", bg="#FF0000")
-                # pygame.mixer.Sound.play(self.snd_crit, loops=-1)
+                pygame.mixer.Sound.play(self.snd_crit, loops=-1)
 
     def _apply_bg(self, color):
         self.root.configure(bg=color)
