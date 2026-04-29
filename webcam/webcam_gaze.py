@@ -38,6 +38,8 @@ class CVAlertManager:
         self.flash_state = False
         self.last_flash_time = time.monotonic()
 
+
+
     def update_state(self, eyes_state, gaze_direction):
         now = time.monotonic()
         
@@ -90,19 +92,42 @@ class CVAlertManager:
             elif level == 2: 
                 print("\n>>> TRIGGER: FATIGUE AUDIO PLAYING <<<")
                 try:
-                    audio_file = str(Path(__file__).parent.parent / 'alarm_loud.wav')
-                    self._audio_process = subprocess.Popen(
-                        ['afplay', audio_file],
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE
-                    )
+                    # Play alarmsection_1.wav twice (intro), then loop alarm_loud.wav
+                    import threading as _thr
+                    self._audio_thread = _thr.Thread(target=self._play_critical_sequence, daemon=True)
+                    self._audio_thread.start()
                 except Exception as e:
                     print(f"Error playing fatigue audio: {e}")
             elif level == 0:
                 print("\n>>> TRIGGER: SYSTEM NORMAL, AUDIO STOPPED <<<")
 
 
+    def _play_critical_sequence(self):
+        """Play alarmsection_1.wav twice, then loop alarm_loud.wav."""
+        try:
+            # Play alarmsection_1.wav twice
+            for _ in range(2):
+                if self.alert_level != 2:
+                    return
+                base = Path(__file__).parent.parent
+                p = subprocess.Popen(
+                    ['afplay', str(base / 'alarmsection_1.wav')],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                )
+                p.wait()
+            # Then loop alarm_loud.wav
+            if self.alert_level == 2:
+                base = Path(__file__).parent.parent
+                self._audio_process = subprocess.Popen(
+                    ['afplay', str(base / 'alarm_loud.wav')],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                )
+        except Exception as e:
+            print(f"Error playing critical audio sequence: {e}")
+
+
     def draw_alert(self, frame):
+
         if self.alert_level == 0:
             return frame
             

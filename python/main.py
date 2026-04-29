@@ -144,6 +144,8 @@ class TelemetryAlertManager:
         # Start the internal flashing loop
         self._flash_loop()
 
+
+
     def evaluate_telemetry(self, pressure, prox_danger, spo2, hr, no_finger=False):
         # 0. If no finger detected on oximeter, trigger warning
         if no_finger:
@@ -185,7 +187,10 @@ class TelemetryAlertManager:
                 pygame.mixer.Sound.play(self.snd_warn, loops=-1)
             elif level == 2:
                 self.alert_label.config(text=text, fg="white", bg="#FF0000")
+                self._apply_bg("#880000")
                 pygame.mixer.Sound.play(self.snd_crit, loops=-1)
+
+
 
     def _apply_bg(self, color):
         self.root.configure(bg=color)
