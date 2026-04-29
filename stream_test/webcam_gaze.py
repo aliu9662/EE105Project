@@ -216,7 +216,7 @@ def main():
 
         if result.face_landmarks:
             lm   = result.face_landmarks[0]
-            gaze, h_ratio, v_ratio, eye_state = gaze_direction_and_ear(lm)
+            gaze, h_ratio, v_ratio, eyes_state = gaze_direction_and_ear(lm)
             draw_overlay(frame, lm)
 
             alert_manager.update_state(eyes_state, gaze)
